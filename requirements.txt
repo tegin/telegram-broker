@@ -1,3 +1,1 @@
-git+https://github.com/tegin/oot@0.0.3#egg=oot==0.0.4
-git+https://github.com/tegin/oddoor@0.0.2#egg=oddoor==0.0.2
-PyGithub
+telegram

@@ -1,0 +1,56 @@
+---
+sudo: false
+language: python
+
+addons:
+  apt:
+    packages:
+      - libssl-dev
+      - openssl
+      - libxml2
+      - pkg-config
+
+matrix:
+  include:
+    - python: 3.5
+      dist: trusty
+      env: TOXENV=py35
+    - python: 3.6
+      dist: trusty
+      env: TOXENV=py36
+    - python: 2.7
+      dist: trusty
+      env: TOXENV=py27
+    - python: 3.5
+      dist: trusty
+      env: TOXENV=py35
+    - python: 3.6
+      dist: trusty
+      env: TOXENV=py36
+    - python: 3.7
+      dist: xenial
+      env: TOXENV=py37
+
+before_cache:
+  - rm -rf $HOME/.cache/pip/log
+
+cache:
+  directories:
+    - $HOME/.cache/pip
+
+deps:
+  - codecov
+
+install:
+  - pip install tox codecov
+  - pip install lxml==$LXML_VERSION
+
+script:
+  - tox -e $TOXENV
+
+after_success:
+  - tox -e coverage-report
+  - codecov
+
+notifications:
+  email: false
