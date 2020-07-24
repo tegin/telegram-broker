@@ -13,6 +13,7 @@ class Broker:
             self.parser.read(config_path)
             self.token = self.parser.get("telegram", "token")
         else:
+            self.parser = False
             self.token = kwargs.get("token")
 
         self.updater = Updater(self.token, use_context=True)
