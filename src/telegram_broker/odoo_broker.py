@@ -1,3 +1,4 @@
+import base64
 import logging
 import traceback
 from io import StringIO
@@ -62,35 +63,66 @@ class OdooBroker(Broker):
             )
         return chat
 
-    def message_callback_message(self, chat_id, date, body, message_id):
+    def message_callback_message(self, chat_id, date, body, message_id, attachments):
+        return self.process_odoo(
+            "mail.telegram.chat",
+            "telegram_message_post_broker",
+            [chat_id],
+            date=date,
+            body=body,
+            message_id=message_id,
+            subtype="mt_comment",
+            attachments=attachments,
+            context={"notify_telegram": True},
+        )
+
+    def message_callback(self, update, context):
+        _logger.debug("Calling message %s" % update)
         try:
-            return self.process_odoo(
-                "mail.telegram.chat",
-                "telegram_message_post_broker",
-                [chat_id],
-                date=date,
-                body=body,
-                message_id=message_id,
-                subtype="mt_comment",
-                context={"notify_telegram": True},
-            )
+            chat_id = self._get_chat(update, context)
+            if not chat_id:
+                return
+            if update.message:
+
+                body = False
+                attachments = []
+                if update.message.text_html:
+                    body = update.message.text_html
+                if update.message.photo:
+                    for photo in update.message.photo:
+                        photo.get_file().download()
+                        data = photo.get_file().download_as_bytearray()
+                        attachments.append(
+                            (
+                                "image.png",
+                                base64.b64encode(bytes(data)).decode("utf-8"),
+                                "image/png",
+                            )
+                        )
+                if update.message.sticker:
+                    update.message.sticker.get_file().download()
+                    data = update.message.sticker.get_file().download_as_bytearray()
+                    attachments.append(
+                        (
+                            "sticker.gif",
+                            base64.b64encode(bytes(data)).decode("utf-8"),
+                            "image/gif",
+                        )
+                    )
+                _logger.info(attachments)
+                if not body:
+                    body = "Empty message"
+                return self.message_callback_message(
+                    chat_id,
+                    update.message.date,
+                    body,
+                    update.message.message_id,
+                    attachments,
+                )
+            return super().message_callback(update, context)
         except Exception:
             buff = StringIO()
             traceback.print_exc(file=buff)
             error = buff.getvalue()
             _logger.warning(error)
             raise
-
-    def message_callback(self, update, context):
-        _logger.debug("Calling message %s" % update)
-        chat_id = self._get_chat(self, update, context)
-        if not chat_id:
-            return
-        if update.message:
-            return self.message_callback_message(
-                chat_id,
-                update.message.date,
-                update.message.text_html,
-                update.message.message_id,
-            )
-        return super().message_callback(update, context)
