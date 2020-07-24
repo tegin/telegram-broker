@@ -1,10 +1,18 @@
 import base64
 import logging
+import mimetypes
 import traceback
-from io import StringIO
+from io import BytesIO, StringIO
 from xmlrpc.client import ServerProxy
 
+import magic
+import telegram
+from lottie.exporters import exporters
+from lottie.importers import importers
+
 from .broker import Broker
+
+mimetypes.add_type("image/webp", ".webp")
 
 _logger = logging.getLogger(__name__)
 
@@ -76,6 +84,65 @@ class OdooBroker(Broker):
             context={"notify_telegram": True},
         )
 
+    def _sticker_input_options(self):
+        return {}
+
+    def _sticker_output_options(self):
+        return {}
+
+    def _get_attachment_name(self, attachment):
+        if hasattr(attachment, "title"):
+            if attachment.title:
+                return attachment.title
+        if hasattr(attachment, "file_name"):
+            if attachment.file_name:
+                return attachment.file_name
+        if isinstance(attachment, telegram.Sticker):
+            return attachment.set_name or attachment.emoji or "sticker"
+        if isinstance(attachment, telegram.Contact):
+            return attachment.first_name
+        return attachment.file_id
+
+    def process_file(self, attachment):
+        if isinstance(
+            attachment,
+            (
+                telegram.Game,
+                telegram.Invoice,
+                telegram.Location,
+                telegram.SuccessfulPayment,
+                telegram.Venue,
+            ),
+        ):
+            return
+        if isinstance(attachment, telegram.Contact):
+            data = attachment.vcard.encode("utf-8")
+        else:
+            data = bytes(attachment.get_file().download_as_bytearray())
+        file_name = self._get_attachment_name(attachment)
+        if isinstance(attachment, telegram.Sticker):
+            suf = "tgs"
+            for p in importers:
+                if suf in p.extensions:
+                    importer = p
+                    break
+            exporter = exporters.get("gif")
+            inpt = BytesIO(data)
+            an = importer.process(inpt, **self._sticker_input_options())
+            output_options = self._sticker_output_options()
+            fps = output_options.pop("fps", False)
+            if fps:
+                an.frame_rate = fps
+            output = BytesIO()
+            exporter.process(an, output, **output_options)
+            data = output.getvalue()
+        mimetype = magic.from_buffer(data, mime=True)
+        return (
+            "{}{}".format(file_name, mimetypes.guess_extension(mimetype)),
+            base64.b64encode(data).decode("utf-8"),
+            mimetype,
+        )
+
     def message_callback(self, update, context):
         _logger.debug("Calling message %s" % update)
         try:
@@ -84,41 +151,34 @@ class OdooBroker(Broker):
                 return
             if update.message:
 
-                body = False
+                body = ""
                 attachments = []
                 if update.message.text_html:
                     body = update.message.text_html
-                if update.message.photo:
-                    for photo in update.message.photo:
-                        photo.get_file().download()
-                        data = photo.get_file().download_as_bytearray()
-                        attachments.append(
-                            (
-                                "image.png",
-                                base64.b64encode(bytes(data)).decode("utf-8"),
-                                "image/png",
+                if update.message.effective_attachment:
+                    effective_attachment = update.message.effective_attachment
+                    if isinstance(effective_attachment, list):
+                        effective_attachment = effective_attachment[0]
+                    if isinstance(effective_attachment, telegram.Location):
+                        body += (
+                            '<a target="_blank" href="https://www.google.com/'
+                            'maps/search/?api=1&query=%s,%s">Location</a>'
+                            % (
+                                effective_attachment.latitude,
+                                effective_attachment.longitude,
                             )
                         )
-                if update.message.sticker:
-                    update.message.sticker.get_file().download()
-                    data = update.message.sticker.get_file().download_as_bytearray()
-                    attachments.append(
-                        (
-                            "sticker.gif",
-                            base64.b64encode(bytes(data)).decode("utf-8"),
-                            "image/gif",
-                        )
+                    attachment_data = self.process_file(effective_attachment)
+                    if attachment_data:
+                        attachments.append(attachment_data)
+                if len(body) > 0 or attachments:
+                    return self.message_callback_message(
+                        chat_id,
+                        update.message.date,
+                        body,
+                        update.message.message_id,
+                        attachments,
                     )
-                _logger.info(attachments)
-                if not body:
-                    body = "Empty message"
-                return self.message_callback_message(
-                    chat_id,
-                    update.message.date,
-                    body,
-                    update.message.message_id,
-                    attachments,
-                )
             return super().message_callback(update, context)
         except Exception:
             buff = StringIO()

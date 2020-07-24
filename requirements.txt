@@ -1,1 +1,4 @@
-telegram
+python-telegram-bot
+python-magic
+lottie
+cairosvg
