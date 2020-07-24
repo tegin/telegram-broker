@@ -1,4 +1,6 @@
 import logging
+import traceback
+from io import StringIO
 
 from telegram.ext.commandhandler import CommandHandler
 from telegram.ext.filters import Filters
@@ -41,25 +43,32 @@ class OdooSecureBroker(OdooBroker):
 
     def _start_chat_handler_secure(self, update, context):
         _logger.info("Creating chat")
-        if self._chats.get(update._effective_chat.id, False):
-            return
+        try:
+            if self._chats.get(update._effective_chat.id, False):
+                return
 
-        self._chats[update._effective_chat.id] = self.process_odoo(
-            "mail.telegram.chat",
-            "create",
-            {
-                "chat_id": update._effective_chat.chat_id,
-                "bot_id": self.bot_id,
-                "name": self._get_chat_name(update, context),
-                "show_on_app": True,
-            },
-        )
-        return self.message_callback_message(
-            self._get_chat(update, context),
-            update.message.date,
-            "start",
-            update.message.message_id,
-        )
+            self._chats[update._effective_chat.id] = self.process_odoo(
+                "mail.telegram.chat",
+                "create",
+                {
+                    "chat_id": update._effective_chat.chat_id,
+                    "bot_id": self.bot_id,
+                    "name": self._get_chat_name(update, context),
+                    "show_on_app": True,
+                },
+            )
+            return self.message_callback_message(
+                self._get_chat(update, context),
+                update.message.date,
+                "start",
+                update.message.message_id,
+            )
+        except Exception:
+            buff = StringIO()
+            traceback.print_exc(file=buff)
+            error = buff.getvalue()
+            _logger.warning(error)
+            raise
 
     def _add_handlers(self):
         self.dp.add_handler(
