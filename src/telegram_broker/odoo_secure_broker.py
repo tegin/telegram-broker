@@ -51,7 +51,7 @@ class OdooSecureBroker(OdooBroker):
                 "mail.telegram.chat",
                 "create",
                 {
-                    "chat_id": update._effective_chat.chat_id,
+                    "chat_id": update._effective_chat.id,
                     "bot_id": self.bot_id,
                     "name": self._get_chat_name(update, context),
                     "show_on_app": True,
