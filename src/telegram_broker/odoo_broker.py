@@ -71,7 +71,11 @@ class OdooBroker(Broker):
             )
         return chat
 
-    def message_callback_message(self, chat_id, date, body, message_id, attachments):
+    def message_callback_message(
+        self, chat_id, date, body, message_id, attachments=False
+    ):
+        if not attachments:
+            attachments = []
         return self.process_odoo(
             "mail.telegram.chat",
             "telegram_message_post_broker",
